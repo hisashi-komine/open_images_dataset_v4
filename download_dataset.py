@@ -23,7 +23,7 @@ def main(args):
             )
 
             response = requests.get(subdataset['remote_url'], stream=True)
-            with open(subdataset.local_path, 'wb') as f:
+            with open(subdataset['local_path'], 'wb') as f:
                 for chunk in response.iter_content(chunk_size=1024):
                     if chunk:
                         f.write(chunk)
