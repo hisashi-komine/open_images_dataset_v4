@@ -1,10 +1,9 @@
 import os
 
-from lib import sql
-
 BASE_DIR = os.path.realpath(os.path.dirname(__file__))
 DATASET_DIR = os.path.join(BASE_DIR, 'dataset')
-IMAGE_DIR = os.path.join(BASE_DIR, 'images')
+IMAGES_DIR = os.path.join(BASE_DIR, 'images')
+LABELS_DIR = os.path.join(BASE_DIR, 'labels')
 
 DATASET_DB = os.path.join(BASE_DIR, 'dataset.sqlite')
 

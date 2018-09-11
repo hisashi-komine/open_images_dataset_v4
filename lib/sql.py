@@ -154,7 +154,14 @@ insert into {table} (
 ]
 
 
-def select_image_urls(bboxes_table, labels_table, images_table, class_names=None, limit=None):
+def select_image_urls(
+    bboxes_table,
+    labels_table,
+    images_table,
+    class_names=None,
+    limit=None,
+    offset=0
+):
     if class_names:
         where_clause = \
             f"classes.class_name in ({','.join(['?'] * len(class_names))}) " \
@@ -162,7 +169,7 @@ def select_image_urls(bboxes_table, labels_table, images_table, class_names=None
     else:
         where_clause = "labels.confidence = 1"
 
-    limit_clause = f'limit {limit}' if limit else ''
+    limit_clause = f'limit {limit} offset {offset}' if limit else ''
 
     return f'''\
 select
@@ -172,8 +179,7 @@ select
 from
   {bboxes_table} as bboxes
   join {labels_table} as labels
-    on bboxes.image_id = labels.image_id
-       and bboxes.label_name = labels.label_name
+    on bboxes.image_id = labels.image_id and bboxes.label_name = labels.label_name
   join {images_table} as images
     on bboxes.image_id = images.image_id
   join classes
@@ -183,3 +189,30 @@ where
 {limit_clause}
 ;
 ''', class_names if class_names else []
+
+
+def select_labels(bboxes_table, labels_table, image_id, class_names=None, confidence=1):
+    if class_names:
+        class_names_cond = f"and classes.class_name in ({','.join(['?'] * len(class_names))})"
+    else:
+        class_names_cond = ''
+
+    return f'''\
+select
+  classes.class_name,
+  bboxes.x_min + (bboxes.x_max - bboxes.x_min) / 2 as x,
+  bboxes.y_min + (bboxes.y_max - bboxes.y_min) / 2 as y,
+  (bboxes.x_max - bboxes.x_min) as width,
+  (bboxes.y_max - bboxes.y_min) as height
+from
+  {bboxes_table} as bboxes
+  join {labels_table} as labels
+    on bboxes.image_id = labels.image_id and bboxes.label_name = labels.label_name
+  join classes
+    on labels.label_name = classes.label_name
+where
+  bboxes.image_id = ?
+  {class_names_cond}
+  and labels.confidence >= ?
+;
+''', [image_id, *(class_names if class_names else []), confidence]
