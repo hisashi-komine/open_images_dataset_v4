@@ -28,6 +28,7 @@ create table if not exists {table} (
   y_min float,
   y_max float,
   is_occluded int,
+  is_truncated int,
   is_group_of int,
   is_depiction int,
   is_inside int
@@ -50,10 +51,11 @@ insert into {table} (
   y_min,
   y_max,
   is_occluded,
+  is_truncated,
   is_group_of,
   is_depiction,
   is_inside
-) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ''', [
     params[0] if params[0] else None,
     params[1] if params[1] else None,
@@ -67,6 +69,7 @@ insert into {table} (
     int(params[9]) if params[9] else None,
     int(params[10]) if params[10] else None,
     int(params[11]) if params[11] else None,
+    int(params[12]) if params[12] else None,
 ]
 
 
@@ -158,20 +161,24 @@ def select_classes():
     return 'select * from classes'
 
 
-def select_image_urls(
+def select_images(
     bboxes_table,
     labels_table,
     images_table,
+    image_id=None,
     class_names=None,
     limit=None,
     offset=0
 ):
+    params = []
+
+    where_clause = 'where bboxes.is_group_of = 0 and labels.confidence = 1'
+    if image_id:
+        where_clause += ' and bboxes.image_id = ?'
+        params.append(image_id)
     if class_names:
-        where_clause = \
-            f"classes.class_name in ({','.join(['?'] * len(class_names))}) " \
-            f"and labels.confidence = 1"
-    else:
-        where_clause = "labels.confidence = 1"
+        where_clause += f" and classes.class_name in ({','.join(['?'] * len(class_names))})"
+        params += class_names if class_names else []
 
     limit_clause = f'limit {limit} offset {offset}' if limit else ''
 
@@ -179,7 +186,8 @@ def select_image_urls(
 select
   distinct bboxes.image_id,
   images.original_url,
-  images.thumbnail_300k_url
+  images.thumbnail_300k_url,
+  images.rotation
 from
   {bboxes_table} as bboxes
   join {labels_table} as labels
@@ -188,11 +196,10 @@ from
     on bboxes.image_id = images.image_id
   join classes
     on labels.label_name = classes.label_name
-where 
-  {where_clause}
+{where_clause}
 {limit_clause}
 ;
-''', class_names if class_names else []
+''', params
 
 
 def select_labels(bboxes_table, labels_table, image_id, class_names=None, confidence=1):
@@ -218,5 +225,6 @@ where
   bboxes.image_id = ?
   {class_names_cond}
   and labels.confidence >= ?
+  and bboxes.is_group_of = 0
 ;
 ''', [image_id, *(class_names if class_names else []), confidence]

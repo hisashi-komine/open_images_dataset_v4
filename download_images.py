@@ -7,7 +7,7 @@ import sqlite3
 import requests
 from contextlib import closing
 
-from lib import logging, sql, make_image_name, is_url_available
+from lib import logging, sql, make_image_name, is_url_available, rotate_bbox
 from settings import DATASET, IMAGES_DIR, DATASET_DB, LABELS_DIR, BBOX_COLORS, PREVIEWS_DIR
 
 
@@ -34,7 +34,7 @@ def main(args):
             cur.execute(sql.select_classes())
             classes = [c[1] for c in cur.fetchall()]
 
-        query, params = sql.select_image_urls(
+        query, params = sql.select_images(
             bboxes_table=DATASET['bboxes'][args.set]['table'],
             labels_table=DATASET['labels'][args.set]['table'],
             images_table=DATASET['images'][args.set]['table'],
@@ -43,34 +43,30 @@ def main(args):
             offset=args.offset
         )
         for row in conn.execute(query, params):
-            image_id, org_url, thumb_url = row
+            image_id, org_url, thumb_url, rotation = row
 
             if is_url_available(thumb_url):
                 image_path = os.path.join(images_dir, make_image_name(image_id, thumb_url))
-                if os.path.exists(image_path) and not args.overwrite:
-                    logger.info(f'[{args.set}:{image_id}:thumb] {image_path} already exists')
-                else:
-                    logger.info(
-                        f'[{args.set}:{image_id}:thumb] '
-                        f'Downloading image {thumb_url} -> {image_path}'
-                    )
-                    response = requests.get(thumb_url)
-                    with open(image_path, 'wb') as f:
-                        f.write(response.content)
+                image_url = thumb_url
+                image_type = 'thumb'
             elif is_url_available(org_url):
                 image_path = os.path.join(images_dir, make_image_name(image_id, org_url))
-                if os.path.exists(image_path) and not args.overwrite:
-                    logger.info(f'[{args.set}:{image_id}:org] {image_path} already exists')
-                else:
-                    logger.info(
-                        f'[{args.set}:{image_id}:org] Downloading image {org_url} -> {image_path}'
-                    )
-                    response = requests.get(org_url)
-                    with open(image_path, 'wb') as f:
-                        f.write(response.content)
+                image_url = org_url
+                image_type = 'org'
             else:
-                logger.info(f'[{args.set}:{image_id}] Image unavailable')
+                logger.warn(f'[{args.set}:{image_id}] Image unavailable')
                 continue
+
+            if os.path.exists(image_path) and not args.overwrite:
+                logger.info(f'[{args.set}:{image_id}:{image_type}] {image_path} already exists')
+            else:
+                logger.info(
+                    f'[{args.set}:{image_id}:{image_type}] '
+                    f'Downloading image {image_url} -> {image_path}'
+                )
+                response = requests.get(image_url)
+                with open(image_path, 'wb') as f:
+                    f.write(response.content)
 
             labels = []
             labels_path = os.path.join(labels_dir, f'{image_id}.txt')
@@ -89,6 +85,7 @@ def main(args):
 
                 with open(labels_path, 'w') as f:
                     for class_name, x, y, width, height in labels:
+                        x, y, width, height = rotate_bbox(x, y, width, height, rotation)
                         f.write(f'{classes.index(class_name)} {x} {y} {width} {height}\n')
 
             if not args.without_preview:
@@ -101,6 +98,12 @@ def main(args):
                     img_height, img_width, _ = img_bgr.shape
 
                     for class_name, x, y, width, height in labels:
+                        logger.debug(
+                            f'[{args.set}:{image_id}:{image_type}] '
+                            f'{x} {y} {width} {height} {rotation}'
+                        )
+                        x, y, width, height = rotate_bbox(x, y, width, height, rotation)
+
                         left = int((x - width / 2) * img_width)
                         right = int((x + width / 2) * img_width)
                         top = int((y - height / 2) * img_height)
