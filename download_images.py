@@ -1,27 +1,39 @@
 #!/usr/bin/env python
 
 import argparse
+import cv2
 import os
 import sqlite3
 import requests
 from contextlib import closing
 
-from lib import logging, sql, make_image_name
-from settings import DATASET, IMAGES_DIR, DATASET_DB, LABELS_DIR
+from lib import logging, sql, make_image_name, is_url_available
+from settings import DATASET, IMAGES_DIR, DATASET_DB, LABELS_DIR, BBOX_COLORS, PREVIEWS_DIR
 
 
 def main(args):
     logger = logging.getLogger(__name__)
     logger.setLevel(args.loglevel)
 
-    if not args.thumb_only:
-        os.makedirs(os.path.join(IMAGES_DIR, args.set, 'org'), exist_ok=True)
-    if not args.org_only:
-        os.makedirs(os.path.join(IMAGES_DIR, args.set, 'thumb'), exist_ok=True)
+    images_dir = os.path.join(IMAGES_DIR, args.set)
+    os.makedirs(images_dir, exist_ok=True)
 
-    os.makedirs(os.path.join(LABELS_DIR, args.set), exist_ok=True)
+    labels_dir = os.path.join(LABELS_DIR, args.set)
+    os.makedirs(labels_dir, exist_ok=True)
+
+    previews_dir = os.path.join(PREVIEWS_DIR, args.set)
+    if not args.without_preview:
+        os.makedirs(previews_dir, exist_ok=True)
 
     with closing(sqlite3.connect(DATASET_DB)) as conn:
+        cur = conn.cursor()
+
+        if args.classes:
+            classes = args.classes
+        else:
+            cur.execute(sql.select_classes())
+            classes = [c[1] for c in cur.fetchall()]
+
         query, params = sql.select_image_urls(
             bboxes_table=DATASET['bboxes'][args.set]['table'],
             labels_table=DATASET['labels'][args.set]['table'],
@@ -30,54 +42,13 @@ def main(args):
             limit=args.limit,
             offset=args.offset
         )
-
         for row in conn.execute(query, params):
             image_id, org_url, thumb_url = row
-            create_label = False
 
-            if not args.thumb_only:
-                if not org_url:
-                    logger.warn(f'[{image_id}:org] Image url is empty')
-                    continue
-
-                image_path = os.path.join(
-                    IMAGES_DIR,
-                    args.set,
-                    'org',
-                    make_image_name(image_id, org_url)
-                )
-
-                if os.path.exists(image_path) and not args.overwrite:
-                    logger.info(f'[{args.set}:{image_id}:org] {image_path} already exists')
-                    create_label = True
-                elif requests.head(org_url).status_code == 302:
-                    logger.warn(f'[{args.set}:{image_id}:org] The image is no longer available')
-                else:
-                    logger.info(
-                        f'[{args.set}:{image_id}:org] Downloading image {org_url} -> {image_path}'
-                    )
-                    response = requests.get(org_url)
-                    with open(image_path, 'wb') as f:
-                        f.write(response.content)
-                    create_label = True
-
-            if not args.org_only:
-                if not thumb_url:
-                    logger.warn(f'[{image_id}:thumb] Image url is empty')
-                    continue
-
-                image_path = os.path.join(
-                    IMAGES_DIR,
-                    args.set,
-                    'thumb',
-                    make_image_name(image_id, thumb_url)
-                )
-
+            if is_url_available(thumb_url):
+                image_path = os.path.join(images_dir, make_image_name(image_id, thumb_url))
                 if os.path.exists(image_path) and not args.overwrite:
                     logger.info(f'[{args.set}:{image_id}:thumb] {image_path} already exists')
-                    create_label = True
-                elif requests.head(org_url).status_code == 302:
-                    logger.warn(f'[{args.set}:{image_id}:thumb] The image is no longer available')
                 else:
                     logger.info(
                         f'[{args.set}:{image_id}:thumb] '
@@ -86,25 +57,68 @@ def main(args):
                     response = requests.get(thumb_url)
                     with open(image_path, 'wb') as f:
                         f.write(response.content)
-                    create_label = True
-
-            if create_label:
-                labels_path = os.path.join(LABELS_DIR, args.set, f'{image_id}.txt')
-
-                if os.path.exists(labels_path) and not args.overwrite:
-                    logger.info(f'[{args.set}:{image_id}:label] {labels_path} already exists')
+            elif is_url_available(org_url):
+                image_path = os.path.join(images_dir, make_image_name(image_id, org_url))
+                if os.path.exists(image_path) and not args.overwrite:
+                    logger.info(f'[{args.set}:{image_id}:org] {image_path} already exists')
                 else:
-                    with open(labels_path, 'w') as f:
-                        logger.info(f'[{args.set}:{image_id}:label] Writing labels -> {labels_path}')
-                        _query, _params = sql.select_labels(
-                            bboxes_table=DATASET['bboxes'][args.set]['table'],
-                            labels_table=DATASET['labels'][args.set]['table'],
-                            image_id=image_id,
-                            class_names=args.classes,
-                        )
-                        for class_name, x, y, width, height in conn.execute(_query, _params):
-                            f.write(f'{args.classes.index(class_name)} {x} {y} {width} {height}\n')
+                    logger.info(
+                        f'[{args.set}:{image_id}:org] Downloading image {org_url} -> {image_path}'
+                    )
+                    response = requests.get(org_url)
+                    with open(image_path, 'wb') as f:
+                        f.write(response.content)
+            else:
+                logger.info(f'[{args.set}:{image_id}] Image unavailable')
+                continue
 
+            labels = []
+            labels_path = os.path.join(labels_dir, f'{image_id}.txt')
+            if os.path.exists(labels_path) and not args.overwrite:
+                logger.info(f'[{args.set}:{image_id}:label] {labels_path} already exists')
+            else:
+                logger.info(f'[{args.set}:{image_id}:label] Writing labels -> {labels_path}')
+                _query, _params = sql.select_labels(
+                    bboxes_table=DATASET['bboxes'][args.set]['table'],
+                    labels_table=DATASET['labels'][args.set]['table'],
+                    image_id=image_id,
+                    class_names=args.classes,
+                )
+                cur.execute(_query, _params)
+                labels = cur.fetchall()
+
+                with open(labels_path, 'w') as f:
+                    for class_name, x, y, width, height in labels:
+                        f.write(f'{classes.index(class_name)} {x} {y} {width} {height}\n')
+
+            if not args.without_preview:
+                preview_path = os.path.join(previews_dir, os.path.basename(image_path))
+                if os.path.exists(preview_path) and not args.overwrite:
+                    logger.info(f'[{args.set}:{image_id}:preview] {preview_path} already exists')
+                else:
+                    logger.info(f'[{args.set}:{image_id}:preview] Drawing preview -> {preview_path}')
+                    img_bgr = cv2.imread(image_path)
+                    img_height, img_width, _ = img_bgr.shape
+
+                    for class_name, x, y, width, height in labels:
+                        left = int((x - width / 2) * img_width)
+                        right = int((x + width / 2) * img_width)
+                        top = int((y - height / 2) * img_height)
+                        bottom = int((y + height / 2) * img_height)
+                        color = BBOX_COLORS[classes.index(class_name) % len(BBOX_COLORS)]
+
+                        cv2.rectangle(img_bgr, (left, top), (right, bottom), color, 1)
+                        cv2.putText(
+                            img_bgr,
+                            class_name,
+                            (left, top + 12),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            .5,
+                            color,
+                            lineType=cv2.LINE_AA
+                        )
+
+                    cv2.imwrite(preview_path, img_bgr)
 
 
 if __name__ == '__main__':
@@ -124,19 +138,14 @@ if __name__ == '__main__':
         help='List of classes to download (e.g. Person "Human eye")',
     )
     parser.add_argument(
-        '--org-only',
-        action='store_true',
-        help='Download original images only',
-    )
-    parser.add_argument(
-        '--thumb-only',
-        action='store_true',
-        help='Download thumbnail images only',
-    )
-    parser.add_argument(
         '--overwrite',
         action='store_true',
         help='Overwrite existing images',
+    )
+    parser.add_argument(
+        '--without-preview',
+        action='store_true',
+        help='Without bbox preview',
     )
     parser.add_argument(
         '--limit',

@@ -3,6 +3,7 @@ import os
 BASE_DIR = os.path.realpath(os.path.dirname(__file__))
 DATASET_DIR = os.path.join(BASE_DIR, 'dataset')
 IMAGES_DIR = os.path.join(BASE_DIR, 'images')
+PREVIEWS_DIR = os.path.join(BASE_DIR, 'previews')
 LABELS_DIR = os.path.join(BASE_DIR, 'labels')
 
 DATASET_DB = os.path.join(BASE_DIR, 'dataset.sqlite')
@@ -67,3 +68,12 @@ DATASET = {
         },
     },
 }
+
+BBOX_COLORS = [
+    (  0, 255, 255),
+    (255,   0, 255),
+    (255, 255,   0),
+    (255,   0,   0),
+    (  0, 255,   0),
+    (  0,   0, 255),
+]

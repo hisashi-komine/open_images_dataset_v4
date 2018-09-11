@@ -154,6 +154,10 @@ insert into {table} (
 ]
 
 
+def select_classes():
+    return 'select * from classes'
+
+
 def select_image_urls(
     bboxes_table,
     labels_table,

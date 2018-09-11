@@ -8,17 +8,7 @@ from contextlib import closing
 import cv2
 
 from lib import logging, sql
-from settings import DATASET, DATASET_DB
-
-
-BBOX_COLORS = [
-    (255,   0,   0),
-    (  0, 255,   0),
-    (  0,   0, 255),
-    (  0, 255, 255),
-    (255,   0, 255),
-    (255, 255,   0),
-]
+from settings import DATASET, DATASET_DB, BBOX_COLORS
 
 
 def main(args):
@@ -28,6 +18,7 @@ def main(args):
     image_id = os.path.splitext(os.path.basename(args.image))[0]
 
     img_bgr = cv2.imread(args.image)
+    img_height, img_width, _ = img_bgr.shape
 
     with closing(sqlite3.connect(DATASET_DB)) as conn:
         query, params = sql.select_labels(
@@ -41,34 +32,24 @@ def main(args):
         c.execute(query, params)
         rows = c.fetchall()
 
-    classes = list(set([r[0] for r in rows]))
+    classes = args.classes if args.classes else list(set([r[0] for r in rows]))
 
     for class_name, x, y, width, height in rows:
-        cv2.rectangle(
-            img_bgr,
-            (int((x - width / 2) * img_bgr.shape[1]), int((y - height / 2) * img_bgr.shape[0])),
-            (int((x + width / 2) * img_bgr.shape[1]), int((y + height / 2) * img_bgr.shape[0])),
-            BBOX_COLORS[classes.index(class_name) % len(BBOX_COLORS)],
-            1
-        )
+        left = int((x - width / 2) * img_width)
+        right = int((x + width / 2) * img_width)
+        top = int((y - height / 2) * img_height)
+        bottom = int((y + height / 2) * img_height)
+        color = BBOX_COLORS[classes.index(class_name) % len(BBOX_COLORS)]
 
-    for i, class_name in enumerate(classes):
+        cv2.rectangle(img_bgr, (left, top), (right, bottom), color, 1)
         cv2.putText(
             img_bgr,
             class_name,
-            (0, (i + 1) * 15),
+            (left, top + 12),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (255, 255, 255),
-            thickness=2
-        )
-        cv2.putText(
-            img_bgr,
-            class_name,
-            (0, (i + 1) * 15),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            BBOX_COLORS[i % len(BBOX_COLORS)]
+            .5,
+            color,
+            lineType=cv2.LINE_AA
         )
 
     cv2.imshow('preview', img_bgr)
