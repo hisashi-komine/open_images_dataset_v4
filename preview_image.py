@@ -63,6 +63,9 @@ def main(args):
         img_path = f.name
 
     img_bgr = cv2.imread(img_path)
+    if not img_bgr:
+        logger.warn(f'[{args.set}:{image_id}] Invalid image')
+        return
     img_height, img_width, _ = img_bgr.shape
 
     os.remove(img_path)

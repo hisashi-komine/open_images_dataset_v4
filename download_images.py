@@ -68,6 +68,12 @@ def main(args):
                 with open(image_path, 'wb') as f:
                     f.write(response.content)
 
+            img_bgr = cv2.imread(image_path)
+            if not img_bgr:
+                logger.warn(f'[{args.set}:{image_id}] Invalid image')
+                os.remove(img_bgr)
+                continue
+
             labels = []
             labels_path = os.path.join(labels_dir, f'{image_id}.txt')
             if os.path.exists(labels_path) and not args.overwrite:
@@ -94,9 +100,7 @@ def main(args):
                     logger.info(f'[{args.set}:{image_id}:preview] {preview_path} already exists')
                 else:
                     logger.info(f'[{args.set}:{image_id}:preview] Drawing preview -> {preview_path}')
-                    img_bgr = cv2.imread(image_path)
                     img_height, img_width, _ = img_bgr.shape
-
                     for class_name, x, y, width, height in labels:
                         logger.debug(
                             f'[{args.set}:{image_id}:{image_type}] '
