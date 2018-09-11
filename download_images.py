@@ -69,9 +69,9 @@ def main(args):
                     f.write(response.content)
 
             img_bgr = cv2.imread(image_path)
-            if not img_bgr:
+            if img_bgr is None:
                 logger.warn(f'[{args.set}:{image_id}] Invalid image')
-                os.remove(img_bgr)
+                os.remove(image_path)
                 continue
 
             labels = []
