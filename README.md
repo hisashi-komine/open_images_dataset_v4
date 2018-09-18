@@ -191,3 +191,24 @@ optional arguments:
                         List of classes to download (e.g. Person "Human eye")
   -l {CRITICAL,ERROR,WARNING,INFO,DEBUG}, --loglevel {CRITICAL,ERROR,WARNING,INFO,DEBUG}
 ```
+
+
+### Extract classes from Yolo dataset
+
+```
+$ ./extract_classes_from_yolo_dataset.py -h
+usage: extract_classes_from_yolo_dataset.py [-h] --extract_class_nos
+                                            EXTRACT_CLASS_NOS
+                                            [EXTRACT_CLASS_NOS ...]
+                                            [-l {CRITICAL,ERROR,WARNING,INFO,DEBUG}]
+                                            images_list output_dir
+
+positional arguments:
+  images_list
+  output_dir
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --extract_class_nos EXTRACT_CLASS_NOS [EXTRACT_CLASS_NOS ...]
+  -l {CRITICAL,ERROR,WARNING,INFO,DEBUG}, --loglevel {CRITICAL,ERROR,WARNING,INFO,DEBUG}
+```
