@@ -27,6 +27,10 @@ def main(args):
                 os.path.splitext(os.path.basename(image_path))[0] + '.txt'
             )
 
+            if not os.path.exists(label_path):
+                logger.warn('Label file {} not found'.format(label_path))
+                continue
+
             labels = []
             with open(label_path, 'r') as _f:
                 reader = csv.reader(_f, delimiter=" ")
