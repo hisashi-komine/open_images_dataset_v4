@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+import sys
 
 import cv2
 
@@ -12,7 +13,7 @@ def main(args):
     logger.setLevel(args.loglevel)
 
     for image_path in args.images:
-        print(image_path)
+        print(image_path, file=sys.stderr, flush=True)
         cv2.imread(image_path)
 
 
